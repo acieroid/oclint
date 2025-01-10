@@ -1,4 +1,4 @@
 (executable
  (public_name oclint)
  (name oclint)
- (libraries oclint compiler-libs.common))
+ (libraries compiler-libs.common))

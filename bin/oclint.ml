@@ -70,6 +70,25 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
 
   let name = "function-without-type-annotation"
 
+  let is_untyped p =
+    match p.ppat_desc with
+    | Ppat_constraint _ ->
+      (* A constraint means we have type information *)
+      false
+    | Ppat_constant _ | Ppat_construct _ ->
+      (* A constant/constructor would either have to be totally matched,
+         or would be caught as a warning by the compiler *)
+      false
+    | _ ->
+      (* Anything else is considered untyped and reported *)
+      true
+
+  let does_not_have_return_type e =
+    match e.pexp_desc with
+    | Pexp_constraint _ -> false
+    | _ -> true
+
+  (* TODO: we also want the return type *)
   let lint super =
     { super with
       structure_item = (fun self item ->
@@ -78,9 +97,13 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
               List.iter (fun binding ->
                           match binding.pvb_pat.ppat_desc with
                           | Ppat_var { txt; loc } ->
+                            List.iter (fun attr -> Printf.printf "attr: %s\n" attr.attr_name.txt) binding.pvb_attributes;
                             begin match binding.pvb_expr.pexp_desc with
-                              | Pexp_constraint _ ->
-                                error name loc (Printf.sprintf "Top-level function '%s' is missing a type annotation" txt)
+                              | Pexp_fun (_, _, p, e) ->
+                                if is_untyped p || does_not_have_return_type e then
+                                    error name loc (Printf.sprintf "Top-level function '%s' is missing type annotations (either for its arguments or for its return type)" txt)
+                              | Pexp_function _ ->
+                                error name loc (Printf.sprintf "Top-level function '%s' is defined with the 'function' keyword. You cannot declare the return type this way, so prefer using 'fun'" txt)
                               | _ -> ()
                             end
                           | _ -> ())

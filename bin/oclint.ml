@@ -88,7 +88,6 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
     | Pexp_constraint _ -> false
     | _ -> true
 
-  (* TODO: we also want the return type *)
   let lint super =
     { super with
       structure_item = (fun self item ->
@@ -97,7 +96,6 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
               List.iter (fun binding ->
                           match binding.pvb_pat.ppat_desc with
                           | Ppat_var { txt; loc } ->
-                            List.iter (fun attr -> Printf.printf "attr: %s\n" attr.attr_name.txt) binding.pvb_attributes;
                             begin match binding.pvb_expr.pexp_desc with
                               | Pexp_fun (_, _, p, e) ->
                                 if is_untyped p || does_not_have_return_type e then
@@ -112,15 +110,75 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
           end;
           super.structure_item self item);
     }
-                              
+end
 
+(** Check for top-level evaluations *)
+module TopLevelEval : UNTYPED_LINT = struct
+  open Ast_iterator
+
+  let name = "toplevel-eval"
+
+  let lint super =
+    { super with
+      structure_item = (fun self item ->
+          begin match item.pstr_desc with
+          | Pstr_eval _ ->
+            error name item.pstr_loc "Top-level evaluation should not be used."
+          | _ -> ()
+          end;
+          super.structure_item self item);
+    }
+end
+
+(** Check for improper casing *)
+module ImproperCasing : UNTYPED_LINT = struct
+  open Ast_iterator
+
+  let name = "improper-casing"
+
+  let is_snake_case s = String.lowercase_ascii s = s
+
+  let is_pascal_case s = not (String.contains s '_')
+
+  let lint super =
+    { super with
+      structure_item = (fun self item ->
+          begin match item.pstr_desc with
+            | Pstr_type (_, decls) ->
+              List.iter (fun decl ->
+                  if not (is_snake_case decl.ptype_name.txt) then
+                    error name decl.ptype_name.loc "Type declaration does not have proper case";
+                  match decl.ptype_kind with
+                  | Ptype_variant constructors ->
+                    List.iter (fun cons ->
+                        if not (is_pascal_case cons.pcd_name.txt) then
+                          error name cons.pcd_name.loc "Type constructor does not have proper case")
+                      constructors
+                  | _ -> ()
+                )
+                decls;
+
+            | Pstr_value (_, bindings) ->
+              List.iter (fun binding ->
+                  match binding.pvb_pat.ppat_desc with
+                  | Ppat_var v ->
+                    if not (is_snake_case v.txt) then
+                      error name v.loc "Binding does not have proper case"
+                  | _ -> ())
+                bindings
+            | _ -> ()
+          end;
+          super.structure_item self item);
+    }
 end
 
 let untyped_lints =
   Ast_iterator.default_iterator
   |> ImperativeConstructs.lint
   |> FunctionTooLong.lint
-  |> FunctionWithoutTypeAnnotation.lint 
+  |> FunctionWithoutTypeAnnotation.lint
+  |> TopLevelEval.lint
+  |> ImproperCasing.lint
 
 module ForbiddenFunction : TYPED_LINT = struct
   open Tast_iterator
@@ -132,7 +190,7 @@ module ForbiddenFunction : TYPED_LINT = struct
     let module_ name = fun path -> Path.last path = name in
     [
       (function_ "Stdlib.List.hd", "List.hd raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.");
-      (function_ "Stdlib.List.tl", "List.hd raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.");
+      (function_ "Stdlib.List.tl", "List.tl raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.");
       (function_ "Stdlib.List.nth", "List.nth raises Failure if the list is too short. Avoid it.");
       (function_ "Stdlib.List.find", "List.find raises Not_found if the element is not found. Prefer List.find_opt.");
       (function_ "Stdlib.List.assoc", "List.assoc raises Not_found if the element is not found. Prefer List.assoc_opt");
@@ -174,28 +232,19 @@ module MutableField : TYPED_LINT = struct
 
   let name = "mutable-field"
 
-  (* TODO: problem with this lint *)
   let lint super =
     { super with
-      structure = (fun self item ->
-          List.iter
-            (function
-              | Typedtree.{ str_desc = Tstr_type (_, type_decls); _ } ->
-                List.iter (fun decl ->
-                    let open Typedtree in
-                    match decl.typ_type.type_kind with
-                    | Types.Type_record (labels, _) ->
-                      Printf.printf "type\n";
-                      List.iter
-                        (fun label ->
-                           if label.Types.ld_mutable = Mutable then
-                             error name label.Types.ld_loc "Usage of 'mutable' keyword is not functionally pure")
-                        labels
-                    | _ -> ())
-                  type_decls
-              | _ -> ())
-            item.str_items;
-          super.structure self item);
+      type_declaration = (fun self decl ->
+          begin match decl.typ_kind with
+          | Ttype_record elems ->
+            let open Typedtree in
+            List.iter (fun label ->
+                if label.ld_mutable = Mutable then
+                  error name label.ld_loc (Printf.sprintf "Mutable record label is forbidden in type %s" decl.typ_name.txt))
+              elems
+          | _ -> ()
+          end;
+        super.type_declaration self decl);
     }
       
 end

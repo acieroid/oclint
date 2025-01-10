@@ -1,0 +1,4 @@
+(library (name test))
+(rule
+  (alias lint)
+  (action (run oclint .)))

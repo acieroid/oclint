@@ -1,0 +1,1 @@
+  $ which oclint >/dev/null

@@ -51,7 +51,7 @@ module FunctionTooLong : UNTYPED_LINT = struct
 
   let name = "function-too-long"
 
-  let max_length = 20
+  let max_length = 30
 
   let lint super =
     { super with
@@ -373,7 +373,7 @@ and process_directory (path : string) : unit =
 
 let () =
   if Array.length Sys.argv < 2 then begin
-    Printf.eprintf "Usage: linter <file.ml | directory>";
+    Printf.eprintf "Usage: %s <file.ml | directory>" Sys.argv.(0);
     exit 1
   end;
   let target = Sys.argv.(1) in

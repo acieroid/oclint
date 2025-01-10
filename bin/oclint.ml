@@ -18,8 +18,14 @@ module type UNTYPED_LINT = sig
   val lint : Ast_iterator.iterator -> Ast_iterator.iterator
 end
 
+(** Typed lints rely on [Tast_iterator] *)
 module type TYPED_LINT = sig
   val lint : Tast_iterator.iterator -> Tast_iterator.iterator
+end
+
+(** Command lints are lints that require running a command (typically, grep) based on the filename *)
+module type CMD_LINT = sig
+  val lint : string -> unit
 end
 
 (** Check for the presence of forbidden imperative constructs *)
@@ -172,6 +178,29 @@ module ImproperCasing : UNTYPED_LINT = struct
     }
 end
 
+(** Check for variables starting with _ but being used *)
+module UnderscoreUsed : UNTYPED_LINT = struct
+  open Ast_iterator
+
+  let name = "undescore-used"
+
+  let is_underscore_name s = String.starts_with ~prefix:"_" s
+
+  (* This is mostly taken from Zanuda *)
+  let lint super =
+    { super with
+      expr = (fun self expr ->
+        let open Parsetree in
+        begin match expr.pexp_desc with
+        | Pexp_ident { loc; txt = Lident v } when is_underscore_name v ->
+          error name loc "A binding starting with an underscore should not be used"
+        | _ -> ()
+        end;
+        super.expr self expr)
+    }
+
+end
+
 let untyped_lints =
   Ast_iterator.default_iterator
   |> ImperativeConstructs.lint
@@ -179,7 +208,9 @@ let untyped_lints =
   |> FunctionWithoutTypeAnnotation.lint
   |> TopLevelEval.lint
   |> ImproperCasing.lint
+  |> UnderscoreUsed.lint
 
+(** Check for a number of forbidden functions, because they are either non-pure, or unsafe *)
 module ForbiddenFunction : TYPED_LINT = struct
   open Tast_iterator
 
@@ -227,6 +258,7 @@ module ForbiddenFunction : TYPED_LINT = struct
     }
 end
 
+(** Check for records with mutable fields *)
 module MutableField : TYPED_LINT = struct
   open Tast_iterator
 
@@ -254,11 +286,7 @@ let typed_lints =
   |> ForbiddenFunction.lint
   |> MutableField.lint
 
-
-module type CMD_LINT = sig
-  val lint : string -> unit
-end
-
+(** Run grep, invoking [matching_line] for every line matching the pattern *)
 let grep ~path ~pattern (matching_line : Location.t -> unit) =
   let command = Printf.sprintf "grep -n '%s' %s" pattern (Filename.quote path) in
   let ic = Unix.open_process_in command in
@@ -276,6 +304,7 @@ let grep ~path ~pattern (matching_line : Location.t -> unit) =
   process ();
   ignore (Unix.close_process_in ic)
 
+(** Check for the use of ;; *)
 module DoubleSemicolon : CMD_LINT = struct
 
   let name = "double-semicolon"
@@ -286,6 +315,7 @@ module DoubleSemicolon : CMD_LINT = struct
 
 end
 
+(** Check for lines that are too long *)
 module LineTooLong : CMD_LINT = struct
 
   let name = "line-too-long"
@@ -298,7 +328,7 @@ module LineTooLong : CMD_LINT = struct
 
 end
 
-let cmd_lints path =
+let cmd_lints = fun path ->
   DoubleSemicolon.lint path;
   LineTooLong.lint path
 

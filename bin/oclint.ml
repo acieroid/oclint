@@ -124,15 +124,25 @@ module TopLevelEval : UNTYPED_LINT = struct
 
   let name = "toplevel-eval"
 
+  (* Adapted from Zanuda *)
   let lint super =
     { super with
-      structure_item = (fun self item ->
-          begin match item.pstr_desc with
-          | Pstr_eval _ ->
-            error name item.pstr_loc "Top-level evaluation should not be used."
-          | _ -> ()
-          end;
-          super.structure_item self item);
+      structure_item =
+        (fun self item ->
+           super.structure_item self item;
+           match item.pstr_desc with
+           | Pstr_eval (_, _) ->
+             error name item.pstr_loc "Top-level evaluation should not be used."
+           | _ -> ())
+    ; expr = (fun self expr ->
+        super.expr self expr;
+        match expr.pexp_desc with
+        | Pexp_extension (_, PStr [ { pstr_desc = Pstr_eval (ein, _); _ } ]) ->
+          self.expr self ein
+        | _ -> ())
+    ; attribute =
+        (fun _ attr ->
+           super.attribute super attr)
     }
 end
 

@@ -3,7 +3,7 @@
   File "test.ml", line 1, characters 8-15:
   Alert oclint:forbidden-function: Unsafe function being used: Stdlib.List.hd. List.hd raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.
   File "test.ml", line 3, characters 8-15:
-  Alert oclint:forbidden-function: Unsafe function being used: Stdlib.List.tl. List.hd raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.
+  Alert oclint:forbidden-function: Unsafe function being used: Stdlib.List.tl. List.tl raises Failure if the list is empty. Use pattern matching instead and deal with the empty list case.
   File "test.ml", line 5, characters 8-16:
   Alert oclint:forbidden-function: Unsafe function being used: Stdlib.List.nth. List.nth raises Failure if the list is too short. Avoid it.
   File "test.ml", line 7, characters 8-17:

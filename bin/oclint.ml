@@ -254,6 +254,54 @@ let typed_lints =
   |> ForbiddenFunction.lint
   |> MutableField.lint
 
+
+module type CMD_LINT = sig
+  val lint : string -> unit
+end
+
+let grep ~path ~pattern (matching_line : Location.t -> unit) =
+  let command = Printf.sprintf "grep -n '%s' %s" pattern (Filename.quote path) in
+  let ic = Unix.open_process_in command in
+  let rec process () =
+    match input_line ic with
+    | line ->
+      let portions = String.split_on_char ':' line in
+      let line_number = int_of_string (List.hd portions) in
+      let pos = Lexing.{ dummy_pos with pos_fname = path; pos_lnum = line_number } in
+      let loc = Location.{ loc_start = pos; loc_end = pos; loc_ghost = true } in
+      matching_line loc;
+      process ()
+    | exception End_of_file -> ()
+  in
+  process ();
+  ignore (Unix.close_process_in ic)
+
+module DoubleSemicolon : CMD_LINT = struct
+
+  let name = "double-semicolon"
+
+  let lint path =
+    grep ~path ~pattern:";;" (fun loc ->
+      error name loc "Usage of ;; is reserved to the top-level and should not be used in files");
+
+end
+
+module LineTooLong : CMD_LINT = struct
+
+  let name = "line-too-long"
+
+  let max_length = 120
+
+  let lint path =
+    grep ~path ~pattern:(Printf.sprintf ".\\{%d\\}" max_length) (fun loc ->
+        error name loc (Printf.sprintf "Line is too long and should be shorter than %d characters." max_length))
+
+end
+
+let cmd_lints path =
+  DoubleSemicolon.lint path;
+  LineTooLong.lint path
+
 let rec process (path : string) : unit =
   if Sys.file_exists path then begin
     if Sys.is_directory path then
@@ -270,6 +318,7 @@ and process_file (path : string) : unit =
     Location.input_name := path;
     Location.init lexbuf path;
     try
+      cmd_lints path;
       let parsed = Parse.implementation lexbuf in
       untyped_lints.structure untyped_lints parsed
     with

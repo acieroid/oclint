@@ -1,4 +1,4 @@
-let f x =
+let f (x : int) : int =
   [x;
    x;
    x;

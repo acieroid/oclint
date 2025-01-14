@@ -89,10 +89,15 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
       (* Anything else is considered untyped and reported *)
       true
 
-  let does_not_have_return_type e =
-    match e.pexp_desc with
-    | Pexp_constraint _ -> false
-    | _ -> true
+  let rec check_fun txt p e =
+    if is_untyped p then
+      error name p.ppat_loc (Printf.sprintf "Top-level function '%s' is missing type annotations for an argument" txt)
+    else
+      match e.pexp_desc with
+      | Pexp_constraint _ -> ()
+      | Pexp_fun (_, _, p, e) -> check_fun txt p e
+      | _ ->
+        error name e.pexp_loc (Printf.sprintf "Top-level function '%s' is missing type annotations for its return type" txt)
 
   let lint super =
     { super with
@@ -104,8 +109,7 @@ module FunctionWithoutTypeAnnotation : UNTYPED_LINT = struct
                           | Ppat_var { txt; loc } ->
                             begin match binding.pvb_expr.pexp_desc with
                               | Pexp_fun (_, _, p, e) ->
-                                if is_untyped p || does_not_have_return_type e then
-                                    error name loc (Printf.sprintf "Top-level function '%s' is missing type annotations (either for its arguments or for its return type)" txt)
+                                check_fun txt p e
                               | Pexp_function _ ->
                                 error name loc (Printf.sprintf "Top-level function '%s' is defined with the 'function' keyword. You cannot declare the return type this way, so prefer using 'fun'" txt)
                               | _ -> ()
@@ -342,11 +346,15 @@ let cmd_lints = fun path ->
   DoubleSemicolon.lint path;
   LineTooLong.lint path
 
+let is_interesting_file (path : string) : bool =
+  (Filename.check_suffix path ".ml" && not (Filename.check_suffix path ".pp.ml"))
+  || Filename.check_suffix path ".cmt"
+
 let rec process (path : string) : unit =
   if Sys.file_exists path then begin
     if Sys.is_directory path then
       process_directory path
-    else if Filename.check_suffix path ".ml" || Filename.check_suffix path ".cmt" then
+    else if is_interesting_file path then
       process_file path
   end else begin
     Printf.eprintf "File or directory not found: %s\n" path;

@@ -218,7 +218,7 @@ end
 let untyped_lints =
   Ast_iterator.default_iterator
   |> ImperativeConstructs.lint
-  |> FunctionTooLong.lint
+  (* |> FunctionTooLong.lint *)
   |> FunctionWithoutTypeAnnotation.lint
   |> TopLevelEval.lint
   |> ImproperCasing.lint
@@ -347,8 +347,11 @@ let cmd_lints = fun path ->
   LineTooLong.lint path
 
 let is_interesting_file (path : string) : bool =
-  (Filename.check_suffix path ".ml" && not (Filename.check_suffix path ".pp.ml"))
-  || Filename.check_suffix path ".cmt"
+  (not (Filename.check_suffix path "lexer.mll")) &&
+  (not (Filename.check_suffix path "lexer.ml")) &&
+  (not (Filename.check_suffix path "parser.ml")) &&
+  ((Filename.check_suffix path ".ml" && not (Filename.check_suffix path ".pp.ml"))
+   || Filename.check_suffix path ".cmt")
 
 let rec process (path : string) : unit =
   if Sys.file_exists path then begin
@@ -376,6 +379,7 @@ and process_file (path : string) : unit =
     | e ->
       Printf.eprintf "Failed to parse file %s: %s\n" path (Printexc.to_string e)
   else if Filename.check_suffix path ".cmt" then
+    (* TODO: ideally, we want the cmt to be linked to the .ml *)
     let (_, cmt_infos) = Cmt_format.read path in
     Option.iter (fun cmt ->
         match cmt.Cmt_format.cmt_annots with
